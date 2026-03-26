@@ -22,15 +22,6 @@ pr:
 pool:
   vmImage: 'ubuntu-latest'
 
-variables:
-  dockerRegistryServiceConnection: 'DockerRegistryConnection'
-  imageRepository: 'dcoker-integration'
-  containerRegistry: 'dockerregistry'
-  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
-  buildConfiguration: 'Release'
-  buildPlatform: 'Any CPU'
-  imageName: '$(containerRegistry).azurecr.io/$(imageRepository)'
-  imageTag: '$(Build.SourceVersion)'
 
 stages:
 - stage: Build
