@@ -1,19 +1,116 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
+# Docker Integration Pipeline
+# Comprehensive CI/CD pipeline for building, testing, and deploying Docker containers
 
 trigger:
-- main
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - 'src/**'
+    - 'Dockerfile'
+    - 'docker-compose.yml'
+    - 'azure-pipelines.yml'
+
+pr:
+  branches:
+    include:
+    - main
+    - develop
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest'
 
-steps:
-- script: echo Hello, new world! Test it
-  displayName: 'Run a one-line script'
+variables:
+  dockerRegistryServiceConnection: 'DockerRegistryConnection'
+  imageRepository: 'dcoker-integration'
+  containerRegistry: 'dockerregistry'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  buildConfiguration: 'Release'
+  buildPlatform: 'Any CPU'
+  imageName: '$(containerRegistry).azurecr.io/$(imageRepository)'
+  imageTag: '$(Build.SourceVersion)'
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+stages:
+- stage: Build
+  displayName: 'Build Docker Image'
+  jobs:
+  - job: BuildDocker
+    displayName: 'Build and Push Docker Image'
+    steps:
+    - checkout: self
+      fetchDepth: 0
+
+    - task: Docker@2
+      displayName: 'Build Docker image'
+      inputs:
+        command: 'build'
+        Dockerfile: '$(dockerfilePath)'
+        tags: |
+          $(imageName):$(Build.BuildId)
+          $(imageName):latest
+          $(imageName):$(Build.SourceBranchName)
+        arguments: |
+          --build-arg BUILD_ID=$(Build.BuildId)
+          --build-arg BUILD_NUMBER=$(Build.BuildNumber)
+          --build-arg SOURCE_VERSION=$(Build.SourceVersion)
+
+    - task: Docker@2
+      displayName: 'Push Docker image to registry'
+      inputs:
+        command: 'push'
+        containerRegistry: '$(dockerRegistryServiceConnection)'
+        repository: '$(imageRepository)'
+        tags: |
+          $(Build.BuildId)
+          latest
+          $(Build.SourceBranchName)
+
+- stage: Test
+  displayName: 'Test Stage'
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - job: RunTests
+    displayName: 'Run Unit Tests'
+    steps:
+    - checkout: self
+
+    - task: UseNode@1
+      displayName: 'Use Node.js (if applicable)'
+      inputs:
+        version: '16.x'
+      continueOnError: true
+
+    - script: |
+        echo "Running application tests..."
+        echo "Add your test commands here"
+      displayName: 'Execute Tests'
+
+    - task: PublishTestResults@2
+      displayName: 'Publish Test Results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/test-results.xml'
+      condition: always()
+
+- stage: Deploy
+  displayName: 'Deploy Stage'
+  dependsOn: Test
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToProduction
+    displayName: 'Deploy to Production'
+    environment:
+      name: production
+      resourceType: VirtualMachine
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: |
+              echo "Deploying docker image: $(imageName):$(Build.BuildId)"
+              echo "Add your deployment commands here"
+              echo "Example: docker pull $(imageName):$(Build.BuildId)"
+            displayName: 'Deploy Docker Container'
